@@ -122,6 +122,17 @@
             <version>1.7.0</version>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>com.mojang</groupId>
+            <artifactId>authlib</artifactId>
+            <version>1.5.25</version>
+			 <exclusions>
+				<exclusion>
+					<groupId>org.apache.logging.log4j</groupId>
+					<artifactId>log4j-api</artifactId>
+				</exclusion>
+			 </exclusions>
+        </dependency>
     </dependencies>
 
     <build>
