@@ -2,8 +2,14 @@ package net.md_5.bungee.connection;
 
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.exceptions.AuthenticationUnavailableException;
+import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
+import net.md_5.bungee.connection.LoginResult.Property;
 import java.math.BigInteger;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URLEncoder;
@@ -428,10 +434,38 @@ public class InitialHandler extends PacketHandler implements PendingConnection
         }
         String encodedHash = URLEncoder.encode( new BigInteger( sha.digest() ).toString( 16 ), "UTF-8" );
 
-        String preventProxy = ( BungeeCord.getInstance().config.isPreventProxyConnections() && getSocketAddress() instanceof InetSocketAddress ) ? "&ip=" + URLEncoder.encode( getAddress().getAddress().getHostAddress(), "UTF-8" ) : "";
-        String authURL = "https://sessionserver.mojang.com/session/minecraft/hasJoined?username=" + encName + "&serverId=" + encodedHash + preventProxy;
+        InetAddress preventProxy =  BungeeCord.getInstance().config.isPreventProxyConnections() ? getAddress().getAddress() : null;
+        //String authURL = "https://sessionserver.mojang.com/session/minecraft/hasJoined?username=" + encName + "&serverId=" + encodedHash + preventProxy;
+        (new Thread("User Authenticator") {
+			public void run() {
+				try {
+					GameProfile filledInProfile = AuthServiceSingleton.sessionService
+							.hasJoinedServer(new GameProfile(null, InitialHandler.this.getName()), encodedHash, preventProxy);
+					if (filledInProfile == null) {
+						disconnect(bungee.getTranslation("offline_mode_player"));
+					}
 
-        Callback<String> handler = new Callback<String>()
+					List<Property> props = Lists.newArrayList();
+
+					for (com.mojang.authlib.properties.Property prop : filledInProfile.getProperties().values()) {
+						props.add(new Property(prop.getName(), prop.getValue(), prop.getSignature()));
+					}
+
+					LoginResult loginResult = new LoginResult(filledInProfile.getId().toString().replaceAll("-", ""),
+							filledInProfile.getName(), props.toArray(new Property[props.size()]));
+
+					loginProfile = loginResult;
+					name = loginResult.getName();
+					uniqueId = Util.getUUID(loginResult.getId());
+					finish();
+					return;
+				} catch (AuthenticationUnavailableException e) {
+					disconnect(bungee.getTranslation("mojang_fail"));
+				}
+			}
+		}).start();
+
+        /*Callback<String> handler = new Callback<String>()
         {
             @Override
             public void done(String result, Throwable error)
@@ -456,7 +490,7 @@ public class InitialHandler extends PacketHandler implements PendingConnection
             }
         };
 
-        HttpClient.get( authURL, ch.getHandle().eventLoop(), handler );
+        HttpClient.get( authURL, ch.getHandle().eventLoop(), handler );*/
     }
 
     private void finish()
